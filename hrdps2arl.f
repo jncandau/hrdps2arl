@@ -1251,6 +1251,7 @@ END SUBROUTINE makndx
 ! ssrd  - downward shortwave flux at surface (W/m2)
 ! 2r    - Relative humidity at 2 m (%)
 ! 2sh   - Specific humidity at 2 m (kg/kg)
+! h     - Orography (m)
 !
 ! 2D forecast variables
 ! Not sure what they are in HRDPS yet
@@ -1286,16 +1287,16 @@ SUBROUTINE makapi(apicfg_name)
   write(30,'(a)')' atmnum =      5 ,   0 ,    2 ,   3 ,   8 ,    1 ,   0 ,'
   write(30,'(a)')' atmcnv =     1.0 ,  1.0 ,   1.0 ,   1.0 ,  0.01,   1.0 , 1.0 ,'
   write(30,'(a)')' atmarl = '//a//'HGTS'//d//'TEMP'//d//'UWND'//d//'VWND'//d//'WWND'//d//'RELH'//d//'SPHU'//a//c
-  write(30,'(a)')' numsfc = 10,'
+  write(30,'(a)')' numsfc = 11,'
   write(30,'(a)')' sfcgrb = '//a//'prmsl'//d// '10u'//d//'10v'//d//'2t' //d// 'blh' &
                             //d// 'sp' //d// 'ishf' //d// 'ssrd' //d// '2r' &
-                            //d// '2sh' //a//c
-  write(30,'(a)')' sfccat =      3,   2,  2,    0,   3,    3,   0,   4,   1,   1'
-  write(30,'(a)')' sfcnum =      1,   2,  3,    0,  18,    0,  11,   7,   1,   0'
-  write(30,'(a)')' sfccnv =   0.01, 1.0, 1.0, 1.0, 1.0, 0.01, 1.0, 1.0, 1.0, 1.0'
+                            //d// '2sh' //d// 'h' //a//c
+  write(30,'(a)')' sfccat =      3,   2,  2,    0,   3,    3,   0,   4,   1,   1,  3'
+  write(30,'(a)')' sfcnum =      1,   2,  3,    0,  18,    0,  11,   7,   1,   0,  6'
+  write(30,'(a)')' sfccnv =   0.01, 1.0, 1.0, 1.0, 1.0, 0.01, 1.0, 1.0, 1.0, 1.0,1.0'
   write(30,'(a)')' sfcarl = '//a//'MSLP'//d//'U10M'//d//'V10M'//d//'T02M' &
                              //d//'PBLH'//d//'PRSS'//d//'SHTF'//d//'DSWF' &
-                             //d//'RH2M'//d//'SPH2'//a//c
+                             //d//'RH2M'//d//'SPH2'//d//'SHGT'//a//c
 
   write(30,'(a)')' numlev = 26'
   write(30,'(a)')' plev = 1015, 1000, 985, 970, 950, 925, 900, 850, 800, &

@@ -29,4 +29,7 @@ for FHR in $(seq -w $FH_BEG $FH_END); do
        gdalwarp -r bilinear -t_srs "EPSG:4326" $GRIB_FILE $GRIB_FILE_LL
     fi
   done
+  gdalwarp -r bilinear -t_srs "EPSG:4326" $OROGRAPHY OROGRAPHY_ll.grb2
 done
+
+

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source ./0_set_parameters_hrdps.sh
+source /home/jcandau/scratch/Test4/0_set_parameters_hrdps.sh
 
 mkdir -p "$WORKDIR"/{surface,levels,arl}
 
@@ -36,9 +36,9 @@ for FHR in $(seq -w $FH_BEG $FH_END); do
       GRIB_FILE="$WORKDIR/levels/${CYCLE}T${RUN_TIME}Z_${V}_ISBL_${L}_${FHR3d}H.grib2"
       if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
         url="${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${V}_ISBL_${L4d}_RLatLon0.0225_PT${FHR3d}H.grib2"
-      	curl -fsS -o "$GRIB_FILE" "$url" || true
+      	curl -f -s -S -o "$GRIB_FILE" "$url" || true
         if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-	   echo "${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${V}_ISBL_${L4d}_RLatLon0.0225_PT${FHR3d}H.grib2" >> $WORKDIR/Missing_downloads.txt
+	   echo "Error downloading: ${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${V}_ISBL_${L4d}_RLatLon0.0225_PT${FHR3d}H.grib2"
 	fi
       fi
     done
@@ -52,8 +52,34 @@ for FHR in $(seq -w $FH_BEG $FH_END); do
         url="${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${SV}_RLatLon0.0225_PT${FHR3d}H.grib2"
 	curl -fsS -o "$GRIB_FILE" "$url" || true
 	if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-	   echo "${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${SV}_RLatLon0.0225_PT${FHR3d}H.grib2" >> $WORKDIR/Missing_downloads.txt
+	   echo "Error downloading: ${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${SV}_RLatLon0.0225_PT${FHR3d}H.grib2"
 	fi
     fi
   done
+
+  # Download orography from the Weather Events on a Grid data type
+  # Note that orography is not available for the prediction at 000H so we have to download it from 001H
+  # and copy it as 000H while changing the forecastTime to 0
+  GRIB_FILE="$WORKDIR/surface/${CYCLE}T${RUN_TIME}Z_OROGRAPHY_SFC_${FHR3d}H.grib2"
+  GRIB_TMP="$WORKDIR/surface/${CYCLE}T${RUN_TIME}Z_OROGRAPHY_SFC_${FHR3d}H.tmp"
+  if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
+        if [[ $FHR -eq "0" || $FHR -eq 0 ]]; then
+	    echo "FHR= $FHR"
+	    echo "Processing ORO at 000"
+	    url="${BASE_URL}/001/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT001H.grib2"
+	    echo $url
+	    echo $GRIB_TMP
+	    curl -fsS -o "$GRIB_TMP" "$url" || true
+	    grib_set -s forecastTime=0,stepRange=0 "$GRIB_TMP" "$GRIB_FILE"
+	    rm $GRIB_TMP
+	else
+	    echo "Processing ORO at > 000"
+            url="${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT${FHR3d}H.grib2"
+            curl -fsS -o "$GRIB_FILE" "$url" || true
+            if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
+               echo "Error downloading: ${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT${FHR3d}H.grib2"
+            fi
+        fi
+  fi
 done
+

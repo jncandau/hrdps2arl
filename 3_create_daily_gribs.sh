@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source ./0_set_parameters_hrdps.sh
+source /home/jcandau/scratch/Test4/0_set_parameters_hrdps.sh
 
 CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
 
