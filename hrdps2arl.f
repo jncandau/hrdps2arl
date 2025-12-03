@@ -31,7 +31,7 @@
 ! alternate name is not specified with the -d option.
 ! This file specifies variables and pressure levels to be written.
 !  -d[decoding configuration file {name | create hrdps2arl.cfg}]
-!  -i[input grib1 file with pressure level fields name {DATA.GRIB}]
+!  -i[input grib1 file with pressure level fields name {LVL.GRIB}]
 !  -a[input grib1 surface fields {SFC.GRIB}]
 !  -f[input grib1 surface fields {SFC2.GRIB}]
 !  -o[output data file name {DATA.ARL}]
@@ -103,22 +103,19 @@ PROGRAM hrdps2arl
   use eccodes
   implicit none
 
-  integer                            ::  fff, iii, qqq  !num of time periods, counter
-  integer                            ::  enum  !num of ensemble members, 
+  integer                            ::  fff, iii  !num of time periods, counter
   integer                            ::  tstep !skip time in grib file.
   integer                            ::  num_files !number of grib files.
   integer                            ::  tfile, afile, ffile,ipp,ipa,test1,test2
-  integer, dimension(3)              ::  ftype
+  integer, dimension(2)              ::  ftype
   integer                            ::  iargc,narg ! command line arguments.
   logical                            ::  ftest 
   logical                            ::  invert = .false.  !HRDPS south to north
-                                         ! [JNC] changed udif from .true. to .false.
-  logical                            ::  udif = .false.  !use the dif fields 
   logical                            ::  warn = .false.  !use the dif fields.
   logical                            ::  verbose = .false.  !print more info
   integer                            ::  ifile  !file identification
   integer                            ::  iret   !returned from ecCodes function.
-  integer                            ::  i,j,k,l,m,n
+  integer                            ::  i,j,k,m,n
   integer                            ::  kl,kv
   integer,dimension(:),allocatable   ::  igrib  !model level grib file
   integer,dimension(:),allocatable   ::  agrib  !analysis surface grib file.
@@ -133,7 +130,7 @@ PROGRAM hrdps2arl
   real                               ::  clat2,clon2, aclat2, aclon2
   real                               ::  tlat1,tlat2 
   integer                            ::  nxp,nyp,nzp, anxp, anyp
-  integer                            ::  pcat,pnum    
+  integer                            ::  pcat  
   real                               ::  dlat,dlon, adlat, adlon
   real, dimension(:),   allocatable  ::  values
   real, dimension(:,:), allocatable  ::  rvalue
@@ -150,25 +147,21 @@ PROGRAM hrdps2arl
   character(len=80)  :: apicfg_name ! define grib variables
   character(len=80)  :: arlcfg_name ! define arl strucure 
   character(len=80)  :: grib_name   ! grib input file name with 3D variables
-  character(len=80)  :: tgrib_name  ! grib input file name with 3D variables
-  character(len=80)  :: agrib_name  ! grib input file name with 2D analysis
-  character(len=80)  :: fgrib_name  ! grib input file name with 2D forecast
+  character(len=80)  :: lgrib_name  ! grib input file name with 3D variables
+  character(len=80)  :: sgrib_name  ! grib input file name with 2D analysis
   character(len=80)  :: data_name   ! arl output data file
   character(len=256) :: value = 'not_set'
   character(len=256) :: pdate = 'no_value'
 
   integer, parameter :: lunit = 50  ! output unit for ARL packed data
   integer, parameter :: kunit = 60  ! log file unit
-  integer            :: ixx,iyy     ! check point
 
   integer               :: pimn
-  integer            :: iyr,imo,ida,ihr,imn,ifh,if1,if2,idur,step
+  integer            :: iyr,imo,ida,ihr,imn
   integer            :: fiyr,fimo,fida,fihr,fimn
-  integer            :: sigma,zero,top,ptop,ktop
-  integer            :: krain
+  integer            :: zero
 
   integer, parameter                 :: maxvar = 25    ! max number of variables
-
 
   integer, parameter                :: maxlev = 30   ! maximum number of pressure levels in HRDPS
   integer                            :: levhgt
@@ -263,8 +256,6 @@ PROGRAM hrdps2arl
   INTEGER,       INTENT(OUT)   :: nzp       ! vertical grid dimension (incl sfc)
   END SUBROUTINE pakset
 
-
-
   SUBROUTINE PAKINP(RVAR,CVAR,NX,NY,NX1,NY1,LX,LY,PREC,NEXP,VAR1,KSUM)
   REAL,          INTENT(OUT)   :: rvar (:,:)  
   CHARACTER(1),  INTENT(IN)    :: cvar (:)  
@@ -276,7 +267,6 @@ PROGRAM hrdps2arl
   REAL,          INTENT(IN)    :: var1  
   INTEGER,       INTENT(INOUT) :: ksum  
   END SUBROUTINE pakinp
-
 
   END INTERFACE
 
@@ -295,67 +285,48 @@ PROGRAM hrdps2arl
      WRITE(*,*)'This file specifies variables and pressure levels to be written.'
      WRITE(*,*)'to the ARL file.'
 
-!     WRITE(*,*)' -e[encoding configuration file {name | create arldata.cfg}]'
      WRITE(*,*)' -d[decoding configuration file {name | create hrdps2arl.cfg}]'
-     WRITE(*,*)' -i[input grib1 file with pressure level fields name {DATA.GRIB}]'
-     WRITE(*,*)' -a[input grib1 surface fields name {SFC.GRIB}]'
-     WRITE(*,*)' -f[input grib1 surface fields name {SFC2.GRIB}]'
+     WRITE(*,*)' -l[input grib1 file with pressure level fields name {LVL.GRIB}]'
+     WRITE(*,*)' -s[input grib1 surface fields name {SFC.GRIB}]'
      WRITE(*,*)' -o[output data file name {DATA.ARL}]'
-     WRITE(*,*)' -p[ensemble data. Number of ensemble to extract]'
      WRITE(*,*)' -t[{1} integer. Extract every ith time period in the grib file]'
      WRITE(*,*)'  e.g. 1 extract all time periods. 2 extract every other time'
      WRITE(*,*)'  period.'
-     WRITE(*,*)' -v[verbose mode {False}]'
      STOP
   END IF
 
-!  apicfg_name='hrdps2arl.cfg'
   arlcfg_name='arldata.cfg'
-  grib_name='DATA.GRIB'
+  apicfg_name='hrdps2arl.cfg'
+  lgrib_name='LVL.GRIB'
+  sgrib_name='SFC.GRIB'
   data_name='DATA.ARL'
-  agrib_name='SFC.GRIB'
-  fgrib_name='SFC2.GRIB'
-  enum=-1
   tstep=1
-  !this is a random test point.
-  ixx=101
-  iyy=121
 
   DO WHILE (NARG.GT.0)
      CALL GETARG(NARG,message)
      SELECT CASE (message(1:2))
      CASE ('-d','-D')
         READ(message(3:),'(A)' )apicfg_name 
-     CASE ('-i','-I')
-        READ(message(3:),'(A)' )grib_name    
-     CASE ('-a','-A')
-        READ(message(3:),'(A)' )agrib_name    
-     CASE ('-f','-F')
-        READ(message(3:),'(A)' )fgrib_name    
+     CASE ('-l','-L')
+        READ(message(3:),'(A)' )lgrib_name    
+     CASE ('-s','-S')
+        READ(message(3:),'(A)' )sgrib_name        
      CASE ('-o','-O')
-        READ(message(3:),'(A)' )data_name  
-     CASE ('-p','-P')
-        READ(message(3:),'(I2)' )enum 
+        READ(message(3:),'(A)' )data_name
      CASE ('-t','-T')
         READ(message(3:),'(I2)' )tstep
-     CASE ('-v','-V')
-        verbose=.TRUE.
      END SELECT
      NARG=NARG-1
   END DO
 
-! If ensemble member positive then it is ensemble data. 
-!  IF(enum.ge.0)THEN
-!     WRITE(*,*)'Extracting ensemble member', enum
-!     if(enum.gt.9)WRITE(*,*)'Warning ensemble members only 0 through 9'
-!  END IF
+  IF(tstep.lt.-1)THEN
+   WRITE(*,*)'Skipping to every ', tstep,' time period in grib files'
+  END IF
 
-! 
+! Read decoding configuration file or create a new one if it does not exist.
   INQUIRE(FILE=TRIM(apicfg_name),EXIST=ftest)
   IF(.NOT.ftest)THEN
-     WRITE(*,*)'Creating new decoding configuration'
-     apicfg_name='hrdps2arl.cfg'
-     WRITE(*,*)'Creating new decoding configuration',apicfg_name
+     WRITE(*,*)'Creating new decoding configuration: ',apicfg_name
      CALL makapi(apicfg_name)
   ELSE
      WRITE(*,*)'Existing decoding configuration: ',TRIM(apicfg_name)
@@ -378,60 +349,46 @@ PROGRAM hrdps2arl
 
 ! find out how many grib files to process. For
 ! HRDPS may need 3d grib, 2d analaysis grib, 2d forecast grib.
-! 2d forecast grib is optional. 
+! 2d forecast grib is optional.
+! Initialize 
   ftype=0
   num_files=0 
   afile=0
   ffile=0
-  tfile=0 
-  INQUIRE(FILE=TRIM(grib_name),EXIST=ftest)
-  IF(ftest)THEN
-     num_files=num_files+1 
-     ftype(num_files)=3      
-     tfile=1
-  ELSE
-     write(*,*)'FILE NOT FOUND ', grib_name
-  ENDIF  
-  INQUIRE(FILE=TRIM(agrib_name),EXIST=ftest)
+  tfile=0
+  !Check for existence of files. 
+  INQUIRE(FILE=TRIM(lgrib_name),EXIST=ftest)
   IF(ftest)THEN
      num_files=num_files+1 
      ftype(num_files)=2      
-     afile=1
+     tfile=1
   ELSE
-     write(*,*)'FILE NOT FOUND ', agrib_name
+     write(*,*)'FILE NOT FOUND ', lgrib_name
   ENDIF  
-  INQUIRE(FILE=TRIM(fgrib_name),EXIST=ftest)
-  IF(ftest)THEN 
+  INQUIRE(FILE=TRIM(sgrib_name),EXIST=ftest)
+  IF(ftest)THEN
      num_files=num_files+1 
      ftype(num_files)=1      
-     ffile=1
+     afile=1
+  ELSE
+     write(*,*)'FILE NOT FOUND ', sgrib_name
   ENDIF  
-  tgrib_name = grib_name
 
-!  WRITE(*,*)'ftype=',ftype
-!  WRITE(*,*)'num_files=',num_files
-
-!------------------------------------------------------------
-
+  WRITE(*,*)'We have ',num_files,' type(s) of input grib2 file(s)'
+  WRITE(*,*)'--------------------------------------------------------'
 
   sfcvar= 0 ! surface variable counter array. Initialize to zero.
 
-!process 2d forecast grib first if available. Then 2d analysis grib. Then 3d
-!grib file.
+! Process 2d grib first if available then 3d grib file.
 !This is the first pass through the grib files to find out structure.
-  WRITE(*,*)'We have ',num_files,' type(s) of input grib2 file(s)'
-  WRITE(*,*)'--------------------------------------------------------'
   DO iii=1,num_files
      SELECT CASE(ftype(num_files-iii+1))
-       CASE (3)
-            WRITE(*,*)'File ',iii,' is a level file' 
-            grib_name = tgrib_name
        CASE (2)
-            WRITE(*,*)'File ',iii,' is a surface file'
-            grib_name = agrib_name
+            WRITE(*,*)'File ',iii,' is a level file' 
+            grib_name = lgrib_name
        CASE (1)
             WRITE(*,*)'File ',iii,' is a surface file'
-            grib_name = fgrib_name
+            grib_name = sgrib_name
      END SELECT
 
      ! support multiple fields in a single message
@@ -455,7 +412,7 @@ PROGRAM hrdps2arl
 
      SELECT CASE(ftype(num_files - iii+1))
 
-        CASE (3)  !3d model or pressure level file. This case evaluated last.
+        CASE (2)  !3d model or pressure level file. This case evaluated last.
            atmvar=0
            allocate(igrib (num_msg))
            allocate(msglev(num_msg))
@@ -475,19 +432,14 @@ PROGRAM hrdps2arl
          WRITE(*,*)'  Processing level grib file'
          
          DO i=1,num_msg  !loop through 3D file messages
-            call grib_get(igrib(i),'levelType',ltype)
-            !         Commented by JNC because HRDPS does not have this parameter
-            !         IF(trim(ltype).EQ.'pl')THEN
-            !             call grib_get(igrib(i),'perturbationNumber',pnum)
-            !             IF(pnum.ne.0.and.enum.eq.-1)warn=.true.
-            !         ENDIF
-            !atmospheric variable 
-            !if model levels then in grib2
 
+            call grib_get(igrib(i),'levelType',ltype)
+             
             !Count the time periods in the file.
             call grib_get(igrib(i),'validityDate',value)
             call grib_get(igrib(i),'validityTime',imn)
-           
+            
+            ! fff counts the number of time periods
             IF(i.eq.1)THEN 
                fff=1
             ELSEIF((pdate.ne.value).or.(pimn.ne.imn))THEN
@@ -526,12 +478,6 @@ PROGRAM hrdps2arl
                      ! atmvar is a table that indicates if the combination
                      ! (variable x level) is present in the files
                      atmvar(kv,kl)=1
-                     ! Here [JNC] changed UDIF to false when UDIF is first declared
-                     ! because UDIF=true adds a variable that has no values, so
-                     ! I am not sure what it does
-                     IF((UDIF).and.(atmarl(kv).eq.'WWND'))THEN
-                        atmvar(numatm+1, kl) = 1  !set difw field for each level
-                     END IF
                   END IF
                END IF  !if kv
             ELSE
@@ -540,18 +486,14 @@ PROGRAM hrdps2arl
       END DO !end of loop through 3d file messages.
 
       WRITE(*,*) "  Finished processing levels file"
-      IF(UDIF) atmarl(numatm+1) = 'DIFW'
       write(kunit,*) 'Number of time periods found', fff
       IF(warn)THEN
         WRITE(*,*)"Warning: File may contain ensemble data" 
-        WRITE(*,*)"and no ensemble member chosen. Use -p option."
-        WRITE(*,*)"Extracting perturbationNumber=0."
-        !enum=0
       ENDIF
       WRITE(*,*)'--------------------------------------------------------'
       warn=.false.
 
-    CASE (2) !2d analysis fields
+    CASE (1) !2d analysis fields
       anum_msg = num_msg
       write(*,*) "  Processing analysis surface file "
       allocate(agrib(anum_msg))
@@ -592,84 +534,20 @@ PROGRAM hrdps2arl
             amsgvar(i)=kv
             ! no special processing requred for most surface fields
             sfcvar(kv)=1
-            ! Here [JNC] changed UDIF to false when UDIF is first declared
-            ! because UDIF=true adds a variable that has no values, so
-            ! I am not sure what it does
-            if((UDIF).and.(sfcarl(kv).eq.'TPP1'))THEN
-                sfcvar(numsfc+1) = 1  !set difr field if precip present
-            END IF
-            ! Here [JNC] changed UDIF to false when UDIF is first declared
-            ! because UDIF=true adds a variable that has no values, so
-            ! I am not sure what it does
-            if((UDIF).and.(sfcarl(kv).eq.'TPP3'))THEN
-                sfcvar(numsfc+1) = 1  !set difr field if precip present
-            END IF
          END IF ! if kv
          END IF
       END DO !loop through messages
-      IF(UDIF) sfcarl(numsfc+1) = 'DIFR'
       write(*,*) "  Finished processing analysis surface file"
       WRITE(*,*)'--------------------------------------------------------'
 
-    CASE (1) !2d forecast fields
-      fnum_msg = num_msg
-      write(*,*) "  Processing forecast surface file "
-      allocate(fgrib (num_msg))
-      allocate(fmsglev(num_msg))
-      allocate(fmsgvar(num_msg))
-      fgrib =-1
-      fmsglev=-1
-      fmsgvar=-1
-
-      !Load the messages into memory from file
-      DO i=1,num_msg
-         call grib_new_from_file(ifile,fgrib(i), iret)
-         IF (iret.NE.grib_success) GOTO 900
-      END DO
-      ! close the file
-      call grib_close_file(ifile,iret)
-      IF (iret.NE.grib_success) GOTO 900
-
-      !sfcvar= 0 ! surface variable counter
-      DO i=1,num_msg
-         call grib_get(fgrib(i),'levelType',ltype)
-         IF(trim(ltype).EQ.'sfc') THEN
-            call grib_get(fgrib(i),'shortName',value)
-            call grib_get(fgrib(i),'parameterCategory',pcat)
-            call grib_get(fgrib(i),'level',levhgt)
-            kv=-1
-            do k=1,numsfc
-               if (pcat.eq.sfccat(k)) then
-               ! if (levhgt.eq.255 .or. levhgt.eq.2 .or. levhgt.eq.10) then
-                  if (trim(value).eq.sfcgrb(k))  kv=k
-                  if (trim(value).eq.'unknown')  kv=k
-               ! endif
-               endif
-            enddo
-         IF(kv.NE.-1)THEN
-            ! set as surface level and 2D (sfc) variable index
-            fmsglev(i)=0
-            fmsgvar(i)=kv
-            ! no special processing requred for most surface fields
-            sfcvar(kv)=1
-            if((UDIF).and.(sfcarl(kv).eq.'TPP1'))THEN
-                sfcvar(numsfc+1) = 1  !set difr field if precip present
-            END IF
-        !   write(kunit,*) i,kv,trim(value),' ',sfcarl(kv),sfcvar(kv)
-         END IF ! if kv
-         END IF
-      END DO
-      IF(UDIF) sfcarl(numsfc+1) = 'DIFR'
-      write(*,*) "Finished processing forecast surface file"
-      WRITE(*,*)'--------------------------------------------------------'
     END SELECT
 
   END DO !loop through files
+
 !  WRITE(*,*) "finished first loop through files"
 !------------------------------------------------------------
 ! create HYSPLIT packing configuration file
-
-  write(kunit,*) '============================='
+!------------------------------------------------------------
 
   model='HRDP'
 
@@ -680,8 +558,7 @@ PROGRAM hrdps2arl
   rlat=0.0
   rlon=0.0
 
-  !ERA5 outputs first grid point is the upper right corner
-  !last grid point is the lower left corner.
+! Get projection info from Level grid
   call grib_get(igrib(i),'latitudeOfFirstGridPointInDegrees', clat)
   call grib_get(igrib(i),'longitudeOfFirstGridPointInDegrees',clon)
   call grib_get(igrib(i), 'latitudeOfLastGridPointInDegrees', clat2)
@@ -690,10 +567,7 @@ PROGRAM hrdps2arl
   call grib_get(igrib(i),'jDirectionIncrementInDegrees', dlat)
   call grib_get(igrib(i),'numberOfPointsAlongAParallel', nxp)
   call grib_get(igrib(i),'numberOfPointsAlongAMeridian', nyp)
-  write(kunit,*) clat,clon,clat2,clon2,dlon,dlat
-  write(kunit,*) "number of surface variables", NUMSFC
-  write(kunit,*) "number of atmospheric variables", NUMATM
-  if(afile.eq.1)THEN
+! Get projection info from surface grib
   call grib_get(agrib(i),'latitudeOfFirstGridPointInDegrees', aclat)
   call grib_get(agrib(i),'longitudeOfFirstGridPointInDegrees',aclon)
   call grib_get(agrib(i), 'latitudeOfLastGridPointInDegrees', aclat2)
@@ -702,17 +576,7 @@ PROGRAM hrdps2arl
   call grib_get(agrib(i),'jDirectionIncrementInDegrees', adlat)
   call grib_get(agrib(i),'numberOfPointsAlongAParallel', anxp)
   call grib_get(agrib(i),'numberOfPointsAlongAMeridian', anyp)
-  ELSE
-  call grib_get(fgrib(i),'latitudeOfFirstGridPointInDegrees', aclat)
-  call grib_get(fgrib(i),'longitudeOfFirstGridPointInDegrees',aclon)
-  call grib_get(fgrib(i), 'latitudeOfLastGridPointInDegrees', aclat2)
-  call grib_get(fgrib(i), 'longitudeOfLastGridPointInDegrees',aclon2)
-  call grib_get(fgrib(i),'iDirectionIncrementInDegrees', adlon)
-  call grib_get(fgrib(i),'jDirectionIncrementInDegrees', adlat)
-  call grib_get(fgrib(i),'numberOfPointsAlongAParallel', anxp)
-  call grib_get(fgrib(i),'numberOfPointsAlongAMeridian', anyp)
-  ENDIF
-
+  
   !checking that 2d analysis and 3d pressure level have same grid.
   write(kunit,*) '---------------------------------------------------------'
   write(kunit,*) 'checking  2d analysis and 3d pressure level have same grid'
@@ -739,11 +603,6 @@ PROGRAM hrdps2arl
 
   !INQUIRE(FILE=TRIM(arlcfg_name),EXIST=ftest)
   !IF(.NOT.ftest)THEN
-
-  IF(udif)THEN
-    NUMATM = NUMATM+1  !The difw field was added
-    NUMSFC = NUMSFC+1  !The difr field was added
-  END IF
 
   CALL MAKNDX (ARLCFG_NAME,MODEL,NXP,NYP,NUMLEV,CLAT,CLON,DLAT,DLON,    &
                   RLAT,RLON,TLAT1,TLAT2,NUMSFC,NUMATM,NDXLEVELS,              &
@@ -809,26 +668,21 @@ PROGRAM hrdps2arl
 
   ipp=1
   ipa=1
-  WRITE(*,*),'Looping through time periods'
+  WRITE(*,*) 'Looping through time periods'
   DO iii=1,fff,tstep  !loop through time periods
 
      WRITE(*,*) 'Time period:' , iii
      !get the 3D variables for each time period.
-     WRITE(*,*) 'processing levels file ' , tgrib_name
+     WRITE(*,*) 'processing levels file ' , lgrib_name
     
      WRITE(*,*) 'mess_min=',(iii-1) * num_msg  / (fff)+1,' mess_max=',(iii-1)*num_msg/(fff) + num_msg/(fff)
 
      DO i=(iii-1) * num_msg  / (fff)+1,(iii-1)*num_msg/(fff) + num_msg/(fff) !number of 3D messages per time period.
-        !If file with ensemble members  
-        if(enum.ne.-1)call grib_get(igrib(i),'perturbationNumber',pnum)
-        IF(enum.ne.-1.and.pnum.ne.enum)CYCLE
         call grib_get(igrib(i),'validityDate',value)
         READ(value,'(2X,3I2)') iyr,imo,ida
         call grib_get(igrib(i),'validityTime',imn)
         ihr=imn/100
         imn=imn-ihr*100
-     !write(kunit,*) 'DATE', iyr,imo,ida,ihr,imn
-     !write(*,*) "3D loop: DATE:", i, iyr, imo, ida, ihr, imn
      IF(msgvar(i).LT.0)CYCLE
      ! define the variable string by the variable and level
      ! index values saved for each message number
@@ -844,7 +698,7 @@ PROGRAM hrdps2arl
      END IF
      call grib_get(igrib(i),'shortName',value)
      call grib_get(igrib(i),'level',levhgt)
-     IF(verbose) write(kunit,*) '3D analysis: ' ,i,ihr, imn, param,' ',trim(value),levhgt,kl,kv,pnum
+     IF(verbose) write(kunit,*) '3D analysis: ' ,i,ihr, imn, param,' ',trim(value),levhgt,kl,kv
      ! get data values in a one dimensional array
      call grib_get(igrib(i),'values',values)
      !IF(verbose) write(kunit,*) 'VALUE ' , values(1)
@@ -866,13 +720,6 @@ PROGRAM hrdps2arl
 
      CALL PAKREC(lunit,RVALUE,CVAR,NXP,NYP,(NXP*NYP),PARAM,     &
            IYR,IMO,IDA,IHR,IMN,0,(KL+1),ZERO)
-     IF((udif).and.(param.eq.'WWND'))THEN
-         CALL PAKINP(var2d,cvar,nxp,nyp,1,1,nxp,nyp,prec,nexp,var1,ksum)
-         rvalue = rvalue-var2d
-         CALL PAKREC(lunit,rvalue,CVAR,NXP,NYP,(NXP*NYP),'DIFW',     &
-           IYR,IMO,IDA,IHR,IMN,0,(KL+1),ZERO)
-         IF(verbose) write(kunit,*) '#3D DIFW ' , rvalue(1,1)
-     END IF
 
   END DO  !loop i for getting 3d variables.
 
@@ -882,18 +729,15 @@ PROGRAM hrdps2arl
   !number of 2d Messages per time period is anum_msg / fff
   !
   IF(afile.eq.1)THEN
-  WRITE(*,*) 'processing surface file ' , agrib_name
+  WRITE(*,*) 'processing surface file ' , sgrib_name
   test2=0
   DO i= 1,anum_msg   !number of 2D messages 
   !DO i=(iii-1) * anum_msg  / (fff)+1, (iii-1)*anum_msg/(fff) + anum_msg/(fff)  !number of 2D messages per time period.
      test1=0
-     if(enum.ne.-1)call grib_get(agrib(i),'perturbationNumber',pnum)
-     IF(enum.ne.-1.and.pnum.ne.enum)CYCLE
      call grib_get(agrib(i),'validityDate',value)
      READ(value,'(2X,3I2)') fiyr,fimo,fida
      !call grib_get(agrib(i),'dataTime',imn)
      call grib_get(agrib(i),'validityTime',fimn)
-     !call grib_get(fgrib(i),'endStep', step)
      fihr=fimn/100
      fimn=fimn-fihr*100
      !If date does not match then cycle to next message 
@@ -919,7 +763,7 @@ PROGRAM hrdps2arl
      END IF
      call grib_get(agrib(i),'shortName',value)
      call grib_get(agrib(i),'level',levhgt)
-     if(verbose) write(kunit,*) '2D analysis: ',i,param, iyr, imo, ida, ihr, pnum
+     if(verbose) write(kunit,*) '2D analysis: ',i,param, iyr, imo, ida, ihr
      ! get data values in a one dimensional array
      call grib_get(agrib(i),'values',values)
      !if(verbose) write(kunit,*) 'VALUE: ', values(1)
@@ -938,109 +782,15 @@ PROGRAM hrdps2arl
      END DO
      CALL PAKREC(lunit,RVALUE,CVAR,NXP,NYP,(NXP*NYP),PARAM,     &
            IYR,IMO,IDA,IHR,IMN,0, (KL+1),ZERO)
-!!!!
-     IF((udif).and.(param.eq.'TPP1'.or.param.eq.'TPP3'))THEN
-         CALL PAKINP(var2d,cvar,nxp,nyp,1,1,nxp,nyp,prec,nexp,var1,ksum)
-         rvalue = rvalue-var2d
-         CALL PAKREC(lunit,rvalue,CVAR,NXP,NYP,(NXP*NYP),'DIFR',     &
-           IYR,IMO,IDA,IHR,IMN,0,(KL+1),ZERO)
-         if(verbose) write(kunit,*) '2D analysis: DIFR'
-     END IF
-!!!!!
   !      write(kunit,*) 'RVALUE, units', rvalue(ixx,iyy),units, KL
-  END DO !loop i through 2d analysis variables)
+  END DO !loop i through 2d analysis variables
   ENDIF
-
-  !get the 2D forecast variables for each time period if a forecast grib file
-  !was input.
-  !time periods for the 2D forecast will not match the 3D and 2D forecast so
-  !must search through them all to find date that matches.
-  IF(ffile.EQ.1)THEN
-  WRITE(*,*) 'processing surface forecast file fgrib ', fgrib_name
-  warn = .true.
-  !!search through all the messages. (possibly could start with the last
-  !message but not sure would save that much time.)
-  test2=0
-  DO i= 1,fnum_msg   !number of 2D messages 
-     !get the Date, time and step.
-     !calculate the date and time the data is for
-     !check to see if it matches date we are writing records for.
-     test1=0
-     if(enum.ne.-1)call grib_get(fgrib(i),'perturbationNumber',pnum)
-     IF(enum.ne.-1.and.pnum.ne.enum)CYCLE
-     call grib_get(fgrib(i),'validityDate',value)
-     READ(value,'(2X,3I2)') fiyr,fimo,fida
-     call grib_get(fgrib(i),'validityTime',fimn)
-     call grib_get(fgrib(i),'endStep', step)
-     fihr=fimn/100
-     fimn=fimn-fihr*100
-     !If date does not match then cycle to next message 
-     if(fihr.ne.ihr) test1=test1+1
-     if(fida.ne.ida) test1=test1+1
-     if(fimo.ne.imo) test1=test1+1
-     IF(TEST1.GT.0)CYCLE
-     !IF((TEST1.GT.0).AND.(TEST2.GT.0))EXIT
-     !ipp = i
-     !test2= test2+1
-     warn = .false.
-     !!!If the message has data for the correct date then process.
-     IF(fmsgvar(i).LT.0)CYCLE
-     ! define the variable string by the variable and level
-     ! index values saved for each message number
-     kl=fmsglev(i)
-     kv=fmsgvar(i)
-     IF(kl.EQ.0)THEN
-        param=sfcarl(kv)
-        units=sfccnv(kv)
-     ELSE
-        param=atmarl(kv)
-        units=atmcnv(kv)
-     END IF
-     call grib_get(fgrib(i),'shortName',value)
-     call grib_get(fgrib(i),'level',levhgt)
-     !write(kunit,*) '2D processing',i,param,' ',trim(value),levhgt,kl,kv, units
-     ! get data values in a one dimensional array
-     call grib_get(fgrib(i),'values',values)
-     ! place data into two dimensional array insuring that the
-     ! J(Y) index increases with latitude (S to N)
-     ! input GRIB data from N to S when invert is true
-     !write(kunit,*) 'FC date', i, iyr, imo, ida, ihr, imn, param, fimn, step
-     IF(fmsgvar(i).LT.0)CYCLE
-     k=0
-     DO j=1,nyp
-        n=j
-        IF(invert)n=nyp+1-j
-     DO m=1,nxp
-        k=k+1
-        rvalue(m,n)=values(k)*units
-     END DO
-     END DO
-     if(verbose) write(kunit,*) '2D forecast: ',i,param, iyr, imo, ida, ihr
-     CALL PAKREC(lunit,RVALUE,CVAR,NXP,NYP,(NXP*NYP),PARAM,     &
-          IYR,IMO,IDA,IHR,IMN,0, (KL+1),ZERO)
-
-     IF((udif).and.(param.eq.'TPP1'.or.param.eq.'TPP3'))THEN
-         CALL PAKINP(var2d,cvar,nxp,nyp,1,1,nxp,nyp,prec,nexp,var1,ksum)
-         rvalue = rvalue-var2d
-         CALL PAKREC(lunit,rvalue,CVAR,NXP,NYP,(NXP*NYP),'DIFR',     &
-           IYR,IMO,IDA,IHR,IMN,0,(KL+1),ZERO)
-         if(verbose) write(kunit,*) '2D analysis: DIFR'
-     END IF
-  END DO !loop i through 2d forecast variables)
-
-
-  IF(warn)THEN 
-    write(kunit,*) 'WARNING, 2d forecast does not have time', iyr, imo, ida, imo
-    write(*,*) 'WARNING, 2d forecast does not have time', iyr, imo, ida, imo
-  END IF
-  END IF !only go through loop if forecast file input
 
 ! complete the output by writing the index record
   CALL PAKNDX(lunit)
   WRITE(*,*)'Finished TIME: ',IYR,IMO,IDA,IHR,IMN
   WRITE(kunit,*)'Finished TIME: ',IYR,IMO,IDA,IHR,IMN
   END DO  !loop through time periods (iii).
-
 
   DO i=1,num_msg
     call grib_release(igrib(i))
@@ -1264,6 +1014,7 @@ END SUBROUTINE makndx
 ! w      - pressure vertical velocity (Pa/s in HRDPS, hPa/s in Hysplit)
 ! r      - relative humidity (% in HRDPS, same in Hysplit)
 ! q      - specific humidity (kg/kg in HRDPS, same in Hysplit)
+
 
 SUBROUTINE makapi(apicfg_name)
 
