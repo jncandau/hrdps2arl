@@ -32,7 +32,7 @@ ascii2shp -i ${OUTPUT_SHP_BASE} lines < GIS_traj_ps_01.txt
 # 4. Create the required .dbf attribute file from the .att file
 # This utility creates a DBF file from a comma-delimited text file
 # Options -C specify column types, -d specify delimiters
-txt2dbf -C7 -C9 -C5 -C9 -d, -d, -d, GIS_traj_ps_01.att trajplot.dbf
+txt2dbf -C7 -C9 -C5 -C9 -d, -d, -d, GIS_traj_ps_01.att ${OUTPUT_SHP_BASE}.dbf
 
 echo "Shapefiles created: $2.shp, $2.shx, $2.dbf"
 

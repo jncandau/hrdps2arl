@@ -401,13 +401,16 @@ run_subscript_d() {
     # Run Hysplit
     hyts_std
 
-    # Convert tdump to kml
+
+    # Export to kml
+    trajplot -a3 -A1 -f0 -itdump.${CYCLE} -otmp
+
     if [[ $REPROJECT -eq 0 ]]; then
-        trajplot -a3 -itdump.${CYCLE} -otmp.kml
-        ogr2ogr -t_srs EPSG:4326 -s_srs "$EC_SRS" trajectory_${CYCLE}.kml tmp.kml
-        rm tmp*.kml  
-    else
-        trajplot -a3 -A1 -itdump.${CYCLE} -otrajectory_${CYCLE}.kml
+        ogr2ogr -t_srs EPSG:4326 -s_srs "$EC_SRS" trajectory_${CYCLE}.kml tmp_01.kml
+        rm tmp_01.kml tmp.ps 
+     else
+        mv tmp_01.kml trajectory_${CYCLE}.kml
+        rm tmp.ps
     fi
 
     echo "HYSPLIT model run completed."
@@ -421,7 +424,7 @@ run_subscript_e() {
     CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
     
     echo "converting Hysplit trajectory to shapefile..."
-
+    ogr2ogr trajectory_20251110.shp trajectory_20251110.kml
     echo "Conversion completed."
 }
 
