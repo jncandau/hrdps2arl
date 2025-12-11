@@ -1055,12 +1055,16 @@ END SUBROUTINE MAKNDX
 !     2r    -> RH2M  : 2m relative humidity (%)
 !     2sh   -> SPH2  : 2m specific humidity (kg/kg)
 !     h     -> SHGT  : Surface orography (m)
+!     cape  -> CAPE  : Convective available potential energy (W/m2)
+!     prate -> TPP1  : Total precip (1h) (kg/(m2*s) -> m factor 3.6)
+!     tcc   -> TCLD  : Total cloud cover (%)
+!     lhtfl -> LTHF  : Latent heat flux (W/m2)
 !
 ! ARGUMENTS:
 !   apicfg_name - Output configuration file name
 !
 ! REFERENCES:
-!   HRDPS: https://eccc-msc.github.io/open-data/msc-data/nwp_hrdps/
+!   HRDPS: https://eccc-msc.github.io/open-data/msc-data/nwp_hrdps/readme_hrdps-datamart_en/
 !   HYSPLIT: https://www.ready.noaa.gov/hysplitusersguide/S141.htm
 !
 !===============================================================================
@@ -1101,16 +1105,21 @@ SUBROUTINE MAKAPI(apicfg_name)
                      'VWND' // d // 'WWND' // d // 'RELH' // d // 'SPHU' // a // c
 
     ! 2D surface variables
-    write(30, '(a)') ' numsfc = 11,'
+    write(30, '(a)') ' numsfc = 15,'
     write(30, '(a)') ' sfcgrb = ' // a // 'prmsl' // d // '10u' // d // '10v' // d // &
                      '2t' // d // 'blh' // d // 'sp' // d // 'ishf' // d // 'ssrd' // d // &
-                     '2r' // d // '2sh' // d // 'h' // a // c
-    write(30, '(a)') ' sfccat =      3,   2,  2,    0,   3,    3,   0,   4,   1,   1,  3'
-    write(30, '(a)') ' sfcnum =      1,   2,  3,    0,  18,    0,  11,   7,   1,   0,  6'
-    write(30, '(a)') ' sfccnv =   0.01, 1.0, 1.0, 1.0, 1.0, 0.01, 1.0, 1.0, 1.0, 1.0,1.0'
+                     '2r' // d // '2sh' // d // 'h' // d // 'cape' // d
+                     // 'prate' // d // 'tcc' // d // 'lhtfl' //a // c
+    write(30, '(a)') ' sfccat =      3,   2,  2,    0,   3,    3,   0,
+    4,   1,   1,  3, 7, 1, 6, 0'
+    write(30, '(a)') ' sfcnum =      1,   2,  3,    0,  18,    0,  11,
+    7,   1,   0,  6, 6, 7, 1, 10'
+    write(30, '(a)') ' sfccnv =   0.01, 1.0, 1.0, 1.0, 1.0, 0.01, 1.0,
+    1.0, 1.0, 1.0, 1.0, 1.0, 3.6, 1, 1'
     write(30, '(a)') ' sfcarl = ' // a // 'MSLP' // d // 'U10M' // d // 'V10M' // d // &
-                     'T02M' // d // 'PBLH' // d // 'PRSS' // d // 'SHTF' // d // 'DSWF' // d // &
-                     'RH2M' // d // 'SPH2' // d // 'SHGT' // a // c
+            'T02M' // d // 'PBLH' // d // 'PRSS' // d // 'SHTF' // d // 'DSWF' // d // &
+            'RH2M' // d // 'SPH2' // d // 'SHGT' // d // 'CAPE' // d //
+            'TPP1' // d // 'TCLD' // d // 'LTHF' // a // c
 
     ! Pressure levels (hPa)
     write(30, '(a)') ' numlev = 26'

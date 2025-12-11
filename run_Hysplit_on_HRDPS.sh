@@ -8,6 +8,18 @@ RUN_D=false
 RUN_E=false
 DATE=""
 
+# Function to check that a grib file exists and is valid
+check_grib() {
+      GRIB_PRESENT=0
+      if [ -f $1 ]; then
+         grib_ls $1 > /dev/null 2>&1
+         if [[ $? -eq 0 ]]; then
+            GRIB_PRESENT=1
+         fi
+      fi
+      echo $GRIB_PRESENT
+}
+
 # Function to validate date format YYYYMMDD
 validate_date() {
     local date_input="$1"
@@ -48,50 +60,65 @@ validate_date() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -x)
+        -d)
             DATE="$2"
             shift 2
             ;;
-        -a)
-            RUN_A=true
-            shift
+        -x)
+            LON="$2"
+            shift 2
             ;;
-        -b)
-            RUN_B=true
+        -y)
+            LAT="$2"
+            shift 2
+            ;;
+        -z)
+            ALT="$2"
+            shift 2
+            ;;
+        -p)
+            RUN_P=true
             shift
             ;;
         -c)
             RUN_C=true
             shift
             ;;
-        -d)
-            RUN_D=true
+        -t)
+            RUN_T=true
             shift
             ;;
-        -e)
-            RUN_E=true
+        -r)
+            RUN_R=true
+            shift
+            ;;
+        -s)
+            RUN_S=true
             shift
             ;;
         --all)
-            RUN_A=true
-            RUN_B=true
+            RUN_P=true
             RUN_C=true
-            RUN_D=true
-            RUN_E=true
+            RUN_T=true
+            RUN_R=true
+            RUN_S=true
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 -x DATE [options]"
+            echo "Usage: $0 [options] -d DATE -x LONGITUTE -y LATITUDE -z ALTITUDE"
             echo ""
             echo "Required:"
-            echo "  -x      DATE  Date in YYYYMMDD format"
+            echo "  -d      DATE  Date in YYYYMMDD format"
+            echo "  -x      LONGITUDE  Longitude in decimal degrees"
+            echo "  -y      LATITUDE   Latitude in decimal degrees"
+            echo "  -z      ALTITUDE    Altitude in meters above ground level"
             echo ""
             echo "Options:"
-            echo "  -a      Download and preprocess HRDPS data"
-            echo "  -b      Create daily GRIB files"
-            echo "  -c      Trim daily grids to region of interest"
-            echo "  -d      Run HYSPLIT model"
-            echo "  -e      Convert trajectory to shapefile"
+            echo "  -p      Download and preprocess HRDPS data"
+            echo "  -c      Create daily GRIB files"
+            echo "  -t      Trim daily grids to region of interest"
+            echo "  -r      Run HYSPLIT model"
+            echo "  -s      Convert trajectory to shapefile"
             echo "  --all   Run all"
             echo "  -h      Show this help message"
             exit 0
@@ -115,24 +142,32 @@ if ! validate_date "$DATE"; then
     exit 1
 fi
 
+# Initialize arrays
+# According to Philippe Barneoud and Alain Malo, it is better to not use the 000 forecast hour because
+# this data may be biased.
+RUN_DATE=()
+# Loop from i=0 to 23
+for i in {0..23}; do
+    if [ $i -le 12 ]; then
+        RUN_DATE[$i]=$(date -u --date=$DATE +%Y%m%d)
+     else
+        RUN_DATE[$i]=$(date -u --date="$DATE + 1 day" +%Y%m%d)
+    fi
+done
+#RUN_TIME=(12 12 12 12 12 12 18 18 18 18 18 18 00 00 00 00 00 00 06 06 06 06 06 06)
+#F_HOUR=(000 001 002 003 004 005 000 001 002 003 004 005 000 001 002 003 004 005 000 001 002 003 004 005)
+RUN_TIME=( 06 12 12 12 12 12 12 18 18 18 18 18 18 00 00 00 00 00 00 06 06 06 06 06)
+F_HOUR=(006 001 002 003 004 005 006 001 002 003 004 005 006 001 002 003 004 005 006 001 002 003 004 005)
 
-RUN_DATE=$DATE
-echo "Date validated: $RUN_DATE"
-
-# We use the hourly predictions at noon every day
-RUN_TIME=00 # cycle (UTC)
-FH_BEG=0           # first forecast hour
-FH_END=8          # last forecast hour to convert
-# Lat Long and altitude of starting point
-LAT=50
-LON=-90
-ALT=500
+for i in {0..23}; do
+echo $i ${RUN_DATE[$i]} ${RUN_TIME[$i]} ${F_HOUR[$i]}
+done
 
 #Environment Canada native rotated ll projection
 EC_SRS='+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=36.08852 +lon_0=-114.694858 +R=6371229 +no_defs'
 
 DROOT=/home/jcandau/scratch/Test4/
-OUTROOT=HRDPS_$(date -u -d $RUN_DATE +%Y%m%d%H)
+OUTROOT=HRDPS_$(date -u -d $DATE +%Y%m%d%H)
 WORKDIR=$DROOT/$OUTROOT
 
 # Pressure levels to download
@@ -144,26 +179,19 @@ PL_VARS=(TMP UGRD VGRD RH VVEL HGT SPFH)    # temperature, wind, humidity, omega
 #SFC_VARS=("PRMSL_MSL" "UGRD_AGL-10m" "VGRD_AGL-10m" "TMP_AGL-2m" "HPBL_Sfc" "PRES_Sfc" "SHTFL_Sfc" "LHTFP_Sfc" "DSWRF_Sfc" "RH_AGL-2m" "SPFH_AGL-2m" "CAPE_Sfc" "TCDC_Sfc")
 # Here I am removing CAPE and TCDC because I can't find a way to set the shortName for these two using grib_set. When I try to change the shortName
 # it also changes the levelOf(something) and I can't seem to be able to correct that
-SFC_VARS=("PRMSL_MSL" "UGRD_AGL-10m" "VGRD_AGL-10m" "TMP_AGL-2m" "HPBL_Sfc" "PRES_Sfc" "SHTFL_Sfc" "LHTFL_Sfc" "DSWRF_Sfc" "RH_AGL-2m" "SPFH_AGL-2m")
-
+SFC_VARS=("PRMSL_MSL" "UGRD_AGL-10m" "VGRD_AGL-10m" "TMP_AGL-2m" "HPBL_Sfc" "PRES_Sfc" "SHTFL_Sfc" "LHTFL_Sfc" "DSWRF_Sfc" "RH_AGL-2m" "SPFH_AGL-2m" "CAPE_Sfc" "TCDC_Sfc" "PRATE_Sfc")
 # We also download OROGRAPHY which is important for Hysplit
 # This variable is available from the Weather Events on a Grid (WEonG) only for predictions at 1h and more (not 000)
 # The url is: https://dd.meteo.gc.ca/today/model_hrdps/continental/2.5km/00/006/20251125T00Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT006H.grib2
 
-# Decide if we reproject the gribs from rotated latlong to regular latlong
-REPROJECT=0
-
 # ============================================
-# SUB-SCRIPT A: Download and preprocess HRDPS data
+# SUB-SCRIPT P: Download and preprocess HRDPS data
 # ============================================
-run_subscript_a() {
+run_subscript_P() {
 
     mkdir -p "$WORKDIR"/{surface,levels,arl}
 
     cd "$WORKDIR"
-
-    CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
-    BASE_URL="https://dd.weather.gc.ca/${CYCLE}/WXO-DD/model_hrdps/continental/2.5km/$RUN_TIME/"  # example pattern
 
     # Function to check that a grib file exists and is valid
     check_grib() {
@@ -181,20 +209,22 @@ run_subscript_a() {
     touch $WORKDIR/Missing_downloads.txt
     echo "Missing downloads $(date)" >> $WORKDIR/Missing_downloads.txt
 
-    for FHR in $(seq -w $FH_BEG $FH_END); do
-        FHR3d=$(printf "%03d" "$FHR")
-        echo "Dowloading gribs for date $CYCLE run time $FHR3d"
+    for i in {0..23}; do
+        echo "---------------------------------------------------------------------------------------"
+        echo "Dowloading gribs for date ${RUN_DATE[$i]} run time ${RUN_TIME[$i]} forecast hour ${F_HOUR[$i]}"
+
+        BASE_URL="https://dd.weather.gc.ca/${RUN_DATE[$i]}/WXO-DD/model_hrdps/continental/2.5km/${RUN_TIME[$i]}/"
 
         # Pressure levels
         for L in "${PLVLS[@]}"; do
             L4d=$(printf "%04d" "$L")
             for V in "${PL_VARS[@]}"; do
-                GRIB_FILE="$WORKDIR/levels/${CYCLE}T${RUN_TIME}Z_${V}_ISBL_${L}_${FHR3d}H.grib2"
+                GRIB_FILE="$WORKDIR/levels/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_${V}_ISBL_${L}_${F_HOUR[$i]}H.grib2"
                 if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-                    url="${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${V}_ISBL_${L4d}_RLatLon0.0225_PT${FHR3d}H.grib2"
+                    url="${BASE_URL}/${F_HOUR[$i]}/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_MSC_HRDPS_${V}_ISBL_${L4d}_RLatLon0.0225_PT${F_HOUR[$i]}H.grib2"
                     curl -f -s -S -o "$GRIB_FILE" "$url" || true
                     if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-                        echo "Error downloading: ${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${V}_ISBL_${L4d}_RLatLon0.0225_PT${FHR3d}H.grib2"
+                        echo "Error downloading: ${url} as ${GRIB_FILE}"
                     fi
                 fi
             done
@@ -203,12 +233,25 @@ run_subscript_a() {
         # Surface fields
         for SV in "${SFC_VARS[@]}"; do
             # e.g., AGL-10m, AGL-2m, MSL
-            GRIB_FILE="$WORKDIR/surface/${CYCLE}T${RUN_TIME}Z_${SV}_SFC_${FHR3d}H.grib2"
+            echo "Downloading surface variable: ${SV}"
+            GRIB_FILE="$WORKDIR/surface/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_${SV}_SFC_${F_HOUR[$i]}H.grib2"
             if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-                url="${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${SV}_RLatLon0.0225_PT${FHR3d}H.grib2"
+                url="${BASE_URL}/${F_HOUR[$i]}/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_MSC_HRDPS_${SV}_RLatLon0.0225_PT${F_HOUR[$i]}H.grib2"
                 curl -fsS -o "$GRIB_FILE" "$url" || true
                 if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-                    echo "Error downloading: ${CYCLE}T${RUN_TIME}Z_MSC_HRDPS_${SV}_RLatLon0.0225_PT${FHR3d}H.grib2"
+                    echo "Error downloading: ${url} as ${GRIB_FILE}"
+                fi
+		    fi
+            if [ $(check_grib $GRIB_FILE) -eq 1 ]; then
+		        if [ ${SV} == "CAPE_Sfc" ]; then
+                    echo "Changing shortName for CAPE"
+		            grib_set -s shortName=cape ${GRIB_FILE} ${GRIB_FILE}.tmp
+		            mv ${GRIB_FILE}.tmp ${GRIB_FILE}
+		        fi
+		        if [ ${SV} == "TCDC_Sfc" ]; then
+                    echo "Changing shortName for TCDC"
+                    grib_set -s shortName=tcc ${GRIB_FILE} ${GRIB_FILE}.tmp
+                    mv ${GRIB_FILE}.tmp ${GRIB_FILE}
                 fi
             fi
         done
@@ -216,13 +259,13 @@ run_subscript_a() {
         # Download orography from the Weather Events on a Grid data type
         # Note that orography is not available for the prediction at 000H so we have to download it from 001H
         # and copy it as 000H while changing the forecastTime to 0
-        GRIB_FILE="$WORKDIR/surface/${CYCLE}T${RUN_TIME}Z_OROGRAPHY_SFC_${FHR3d}H.grib2"
-        GRIB_TMP="$WORKDIR/surface/${CYCLE}T${RUN_TIME}Z_OROGRAPHY_SFC_${FHR3d}H.tmp"
+        GRIB_FILE="$WORKDIR/surface/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_OROGRAPHY_SFC_${F_HOUR[$i]}H.grib2"
+        GRIB_TMP="$WORKDIR/surface/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_OROGRAPHY_SFC_${F_HOUR[$i]}H.tmp"
         if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-            if [[ $FHR -eq "0" || $FHR -eq 0 ]]; then
-                echo "FHR= $FHR"
+            if [[ ${F_HOUR[$i]} == "000" ]]; then
+                echo "F_HOUR= ${F_HOUR[$i]}"
                 echo "Processing ORO at 000"
-                url="${BASE_URL}/001/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT001H.grib2"
+                url="${BASE_URL}/001/${F_DATE[$i]}T${RUN_TIME[$i]}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT001H.grib2"
                 echo $url
                 echo $GRIB_TMP
                 curl -fsS -o "$GRIB_TMP" "$url" || true
@@ -230,85 +273,42 @@ run_subscript_a() {
                 rm $GRIB_TMP
             else
                 echo "Processing ORO at > 000"
-                url="${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT${FHR3d}H.grib2"
+                url="${BASE_URL}/${F_HOUR[$i]}/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT${F_HOUR[$i]}H.grib2"
                 curl -fsS -o "$GRIB_FILE" "$url" || true
                 if [ $(check_grib $GRIB_FILE) -eq 0 ]; then
-                    echo "Error downloading: ${BASE_URL}/${FHR3d}/${CYCLE}T${RUN_TIME}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT${FHR3d}H.grib2"
+                    echo "Error downloading: ${BASE_URL}/${F_HOUR[$i]}/${RUN_DATE[$i]}T${RUN_TIME[$i]}Z_MSC_HRDPS-WEonG_ORGPHY_Sfc_RLatLon0.0225_PT${F_HOUR[$i]}H.grib2"
                 fi
             fi
+        else
+            echo "Orography file already exists: $GRIB_FILE"
         fi
     done
     echo "Downloading completed."
-
-if [ $REPROJECT -ne 0 ]; then
-    for FHR in $(seq -w $FH_BEG $FH_END); do
-        FHR3d=$(printf "%03d" "$FHR")
-        echo "Reprojecting for time: $FHR3d"
-
-        cd "${WORKDIR}/levels"
-        # Pressure levels
-        for L in "${PLVLS[@]}"; do
-            for V in "${PL_VARS[@]}"; do
-                GRIB_FILE="${CYCLE}T${RUN_TIME}Z_${V}_ISBL_${L}_${FHR3d}H.grib2"
-                GRIB_FILE_LL="${CYCLE}T${RUN_TIME}Z_${V}_ISBL_${L}_${FHR3d}H_ll.grib2"
-                if [ -f "$GRIB_FILE" ]; then
-                    gdalwarp -r bilinear -t_srs "EPSG:4326" "$GRIB_FILE" "$GRIB_FILE_LL"
-                fi
-            done
-        done
-
-        cd "${WORKDIR}/surface"
-        # Surface fields
-        for SV in "${SFC_VARS[@]}"; do
-            GRIB_FILE="${CYCLE}T${RUN_TIME}Z_${SV}_SFC_${FHR3d}H.grib2"
-            GRIB_FILE_LL="${CYCLE}T${RUN_TIME}Z_${SV}_SFC_${FHR3d}H_ll.grib2"
-            if [ -f "$GRIB_FILE" ]; then
-                gdalwarp -r bilinear -t_srs "EPSG:4326" "$GRIB_FILE" "$GRIB_FILE_LL"
-            fi
-        done
-    done
-fi
 }
 
 # ============================================
-# SUB-SCRIPT B: Create daily GRIB files
+# SUB-SCRIPT C: Create daily GRIB files
 # ============================================
-run_subscript_b() {
+run_subscript_C() {
     echo "Creating daily GRIB files..."
-    CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
-
-if [ $REPROJECT -eq 0 ]; then
-   rm -f $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_levels.grib2
-   rm -f $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_surface.grib2
-   cd $WORKDIR/levels
-   find . -type f ! -name "*_ll.grib2" -exec cat {} + > $WORKDIR/arl/temp_levels.grib2
-   # Sort the resulting grids by date and time
-   grib_copy -B "date:i asc, stepRange:i asc, level:i asc" $WORKDIR/arl/temp_levels.grib2 $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_levels.grib2
-   rm $WORKDIR/arl/temp_levels.grib2
-   cd $WORKDIR/surface
-   find . -type f ! -name "*_ll.grib2" -exec cat {} + > $WORKDIR/arl/temp_surface.grib2
-   grib_copy -B "date:i asc, stepRange:i asc, level:i asc" $WORKDIR/arl/temp_surface.grib2 $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_surface.grib2
-   rm $WORKDIR/arl/temp_surface.grib2
-else
-   rm -f $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_levels_ll.grib2
-   rm -f $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_surface_ll.grib2
-   cd $WORKDIR/levels
-   find . -type f -name "*_ll.grib2" -exec cat {} + > $WORKDIR/arl/temp_levels_ll.grib2
-   grib_copy -B "date:i asc, stepRange:i asc, level:i asc" $WORKDIR/arl/temp_levels_ll.grib2 $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_levels_ll.grib2
-   rm $WORKDIR/arl/temp_levels_ll.grib2
-   cd $WORKDIR/surface
-   find . -type f -name "*_ll.grib2" -exec cat {} + > $WORKDIR/arl/temp_surface_ll.grib2
-   grib_copy -B "date:i asc, stepRange:i asc, level:i asc" $WORKDIR/arl/temp_surface_ll.grib2 $WORKDIR/arl/${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_surface_ll.grib2
-   rm $WORKDIR/arl/temp_surface_ll.grib2
-fi
+    rm -f $WORKDIR/arl/*_HRDPS_levels.grib2
+    rm -f $WORKDIR/arl/*_HRDPS_surface.grib2
+    cd $WORKDIR/levels
+    find . -type f -name "*.grib2" -exec cat {} + > $WORKDIR/arl/temp_levels.grib2
+    # Sort the resulting grids by date and time
+    grib_copy -B "validityDate:i asc, validityTime:i asc, level:i asc" $WORKDIR/arl/temp_levels.grib2 $WORKDIR/arl/${DATE}_HRDPS_levels.grib2
+    # rm $WORKDIR/arl/temp_levels.grib2
+    cd $WORKDIR/surface
+    find . -type f -name "*.grib2" -exec cat {} + > $WORKDIR/arl/temp_surface.grib2
+    grib_copy -B "validityDate:i asc, validityTime:i asc, level:i asc" $WORKDIR/arl/temp_surface.grib2 $WORKDIR/arl/${DATE}_HRDPS_surface.grib2
+    # rm $WORKDIR/arl/temp_surface.grib2
     echo "Daily GRIB files created."
 }
 
 # ====================================================  
-# SUB-SCRIPT C: Trim daily grids to region of interest
+# SUB-SCRIPT T: Trim daily grids to region of interest
 # ====================================================
-run_subscript_c() {
-    CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
+run_subscript_T() {
     echo "Trimming daily grids to region of interest..."
     cd $WORKDIR/arl
 
@@ -322,42 +322,28 @@ run_subscript_c() {
     LR_LON=$(($LON + 5))
     LR_LAT=$(($LAT - 5))
 
-    if [ $REPROJECT -eq 0 ]; then
-        #Calculate the bounding box for the trim
-        UL=$(echo -e "$UL_LON $UL_LAT" | gdaltransform -output_xy -s_srs EPSG:4326 -t_srs "$EC_SRS")
-        LR=$(echo -e "$LR_LON $LR_LAT" | gdaltransform -output_xy -s_srs EPSG:4326 -t_srs "$EC_SRS")
-        echo "Trimming daily gribs"
-        gdal_translate -projwin $UL $LR ${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_surface.grib2 surface_small.grib2
-        gdal_translate -projwin $UL $LR ${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_levels.grib2 levels_small.grib2
-        echo "Converting to ARL format"
-        hrdps2arl -llevels_small.grib2 -ssurface_small.grib2
-    else
-        echo "Trimming daily gribs"
-        gdal_translate -projwin $UL_LON $UL_LAT $LR_LON $LR_LAT ${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_surface_ll.grib2 surface_small_ll.grib2
-        gdal_translate -projwin $UL_LON $UL_LAT $LR_LON $LR_LAT ${CYCLE}T${RUN_TIME}_${FH_BEG}_${FH_END}_HRDPS_levels_ll.grib2 levels_small_ll.grib2
-        echo "Converting to ARL format"
-        hrdps2arl -llevels_small_ll.grib2 -ssurface_small_ll.grib2
-    fi
+    #Calculate the bounding box for the trim
+    UL=$(echo -e "$UL_LON $UL_LAT" | gdaltransform -output_xy -s_srs EPSG:4326 -t_srs "$EC_SRS")
+    LR=$(echo -e "$LR_LON $LR_LAT" | gdaltransform -output_xy -s_srs EPSG:4326 -t_srs "$EC_SRS")
+    echo "Trimming daily gribs"
+    gdal_translate -projwin $UL $LR ${DATE}_HRDPS_surface.grib2 surface_small.grib2
+    gdal_translate -projwin $UL $LR ${DATE}_HRDPS_levels.grib2 levels_small.grib2
+    echo "Converting to ARL format"
+    hrdps2arl -llevels_small.grib2 -ssurface_small.grib2
 
     echo "Trimming completed."
 }
 
 # ============================================
-# SUB-SCRIPT D: Run HYSPLIT model
+# SUB-SCRIPT R: Run HYSPLIT model
 # ============================================
-run_subscript_d() {
-
-    CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
+run_subscript_R() {
     
     echo "converting HRDPS GRIB to HYSPLIT format..."
     
     cd $WORKDIR/arl
 
-    if [ $REPROJECT -eq 0 ]; then
-        hrdps2arl -llevels_small.grib2 -ssurface_small.grib2
-    else
-        hrdps2arl -llevels_small_ll.grib2 -ssurface_small_ll.grib2
-    fi
+    hrdps2arl -llevels_small.grib2 -ssurface_small.grib2
 
     echo "Preparing to run HYSPLIT model..."
 
@@ -365,23 +351,30 @@ run_subscript_d() {
     # Careful because the coordinates in the CONTROL FILE
     # are in the order LAT LON, not LON LAT
     CONTROL_FILE="CONTROL"
-    echo $(date -u -d $RUN_DATE +'%Y %m %d %H') > $CONTROL_FILE
+    # Starting time (Year, month, day, hour)
+    echo $(date -u -d $DATE +'%Y %m %d %H') > $CONTROL_FILE
+    # Number of starting locations
     echo "1" >> $CONTROL_FILE
-    if [ $REPROJECT -eq 0 ]; then
-        SP1=$(echo -e "$LON $LAT $ALT" | gdaltransform -s_srs EPSG:4326 -t_srs "$EC_SRS")
-        SP2="$(echo $SP1 | cut -d " " -f 2) $(echo $SP1 | cut -d " " -f 1)  $(echo $SP1 | cut -d " " -f 3)"
-        echo "${SP2}" >> $CONTROL_FILE
-    else
-        echo "$LAT $LON $ALT" >> $CONTROL_FILE
-    fi
+    # Starting location (lat lon alt)
+    SP1=$(echo -e "$LON $LAT $ALT" | gdaltransform -s_srs EPSG:4326 -t_srs "$EC_SRS")
+    SP2="$(echo $SP1 | cut -d " " -f 2) $(echo $SP1 | cut -d " " -f 1)  $(echo $SP1 | cut -d " " -f 3)"
+    echo "${SP2}" >> $CONTROL_FILE
+    # Number of hours to run
     echo "6" >> $CONTROL_FILE
+    # Vertical motion method (0=isentropic, 1=pressure, 2=vertical velocity)
     echo "0" >> $CONTROL_FILE
+    # Top of model (in meters AGL)
     echo "15500" >> $CONTROL_FILE
+    # Number of meteorological files
     echo "1" >> $CONTROL_FILE
+    # Meteorological file paths
     echo "./" >> $CONTROL_FILE
+    # Meteorological file names
     echo "DATA.ARL" >> $CONTROL_FILE
+    # Output file path
     echo "./" >> $CONTROL_FILE
-    echo "tdump.$CYCLE" >> $CONTROL_FILE
+    # Output file name
+    echo "tdump.$DATE" >> $CONTROL_FILE
 
     # Write SETUP FILE
     SETUP_FILE="SETUP"
@@ -403,25 +396,18 @@ run_subscript_d() {
 
 
     # Export to kml
-    trajplot -a3 -A1 -f0 -itdump.${CYCLE} -otmp
+    trajplot -a3 -A1 -f0 -itdump.${DATE} -otmp
 
-    if [[ $REPROJECT -eq 0 ]]; then
-        ogr2ogr -t_srs EPSG:4326 -s_srs "$EC_SRS" trajectory_${CYCLE}.kml tmp_01.kml
-        rm tmp_01.kml tmp.ps 
-     else
-        mv tmp_01.kml trajectory_${CYCLE}.kml
-        rm tmp.ps
-    fi
+    ogr2ogr -t_srs EPSG:4326 -s_srs "$EC_SRS" trajectory_${DATE}.kml tmp_01.kml
+    rm tmp_01.kml tmp.ps 
 
     echo "HYSPLIT model run completed."
 }
 
 # ============================================  
-# SUB-SCRIPT E: convert Hysplit trajectory to shapefile
+# SUB-SCRIPT S: convert Hysplit trajectory to shapefile
 # ============================================
-run_subscript_e() {
-    
-    CYCLE=$(date -u -d $RUN_DATE +%Y%m%d)
+run_subscript_S() {
     
     echo "converting Hysplit trajectory to shapefile..."
     ogr2ogr trajectory_20251110.shp trajectory_20251110.kml
@@ -433,10 +419,10 @@ run_subscript_e() {
 # ============================================
 echo "Starting main script..."
 
-[[ "$RUN_A" == true ]] && run_subscript_a
-[[ "$RUN_B" == true ]] && run_subscript_b
-[[ "$RUN_C" == true ]] && run_subscript_c
-[[ "$RUN_D" == true ]] && run_subscript_d
-[[ "$RUN_E" == true ]] && run_subscript_e
+[[ "$RUN_P" == true ]] && run_subscript_P
+[[ "$RUN_C" == true ]] && run_subscript_C
+[[ "$RUN_T" == true ]] && run_subscript_T
+[[ "$RUN_R" == true ]] && run_subscript_R
+[[ "$RUN_S" == true ]] && run_subscript_S
 
 echo "Main script finished."
