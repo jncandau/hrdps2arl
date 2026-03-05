@@ -317,19 +317,14 @@ run_subscript_T() {
     fi
     
     # Calculate the bounding box for trimming
-    UL_LON=$(($LON - 5))
-    UL_LAT=$(($LAT + 5))
-    LR_LON=$(($LON + 5))
-    LR_LAT=$(($LAT - 5))
+    LL_LON=$(($LON - 10))
+    LL_LAT=$(($LAT - 10))
+    UR_LON=$(($LON + 10))
+    UR_LAT=$(($LAT + 10))
 
-    #Calculate the bounding box for the trim
-    UL=$(echo -e "$UL_LON $UL_LAT" | gdaltransform -output_xy -s_srs EPSG:4326 -t_srs "$EC_SRS")
-    LR=$(echo -e "$LR_LON $LR_LAT" | gdaltransform -output_xy -s_srs EPSG:4326 -t_srs "$EC_SRS")
     echo "Trimming daily gribs"
-    gdal_translate -projwin $UL $LR ${DATE}_HRDPS_surface.grib2 surface_small.grib2
-    gdal_translate -projwin $UL $LR ${DATE}_HRDPS_levels.grib2 levels_small.grib2
-    echo "Converting to ARL format"
-    hrdps2arl -llevels_small.grib2 -ssurface_small.grib2
+    gdalwarp -te $LL_LON $LL_LAT $UR_LON $UR_LAT -s_srs EPSG:4326 ${DATE}_HRDPS_surface.grib2 surface_small.grib2
+    gdalwarp -te $LL_LON $LL_LAT $UR_LON $UR_LAT -s_srs EPSG:4326 ${DATE}_HRDPS_levels.grib2 levels_small.grib2
 
     echo "Trimming completed."
 }
